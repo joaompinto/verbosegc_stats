@@ -116,13 +116,18 @@ class VerboseGCParser:
                         if pause_time > stats_gc_type.pause_time_max:
                             stats_gc_type.pause_time_max = pause_time
                             stats_gc_type.pause_time_max_ds = date_stamp
-
+            elif level == 1:
+                area_type, collection_info = content.split()
+                if area_type == 'PSPermGen:':
+                    heaps = re.findall('(\w*)K->(\w*)K\((\w*)K\)', collection_info)[0]
+                    heap_before, heap_after, heap_size = map(lambda x: int(x), heaps)
+                    self.allGC.permgen_max_per = float(heap_after) / (heap_size) * 100
 
 
     def print_summary(self):
         total_interval_period = sum(self.allGC.interval_times)
         report = ""
-        report += "Analyzed GC activity for %s from %s to %s (%s)\n" % (
+        report += "*** Analyzed GC activity for %s from %s to %s (%s)\n" % (
             self.jvm_name,
             self.allGC.first_date,
             self.allGC.last_date,
@@ -130,6 +135,10 @@ class VerboseGCParser:
         )
         report += """The max heap used memory (after a full GC) was %dK [%2.2f%%] on %s.\n"""\
             % (self.fullGC.heap_after_max, self.fullGC.heap_after_max_per, self.fullGC.heap_after_max_ds)
+        if 'permgen_max_per' in self.allGC.__dict__:
+            report += """The max PSPermGen memory usage was %2.2f%%\n"""\
+                % (self.allGC.permgen_max_per)
+
         report += """The max pause time was %2.1fs on %s.\n"""\
             % (self.allGC.pause_time_max, self.allGC.pause_time_max_ds)
         report += """Performed %d full GCs, with a pause time of %.2fs (avg) at %s (avg) intervals.\n""" % (\
@@ -142,6 +151,7 @@ class VerboseGCParser:
             float(sum(self.GC.pause_times))/len(self.GC.pause_times),
             self.seconds2hours(float(sum(self.GC.interval_times))/len(self.GC.interval_times))
             )
+        report += "***\n"
 
         print report
 
