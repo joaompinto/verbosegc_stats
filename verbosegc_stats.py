@@ -64,7 +64,7 @@ class VerboseGCParser:
 
 
     #http://stackoverflow.com/a/4285211/401041
-    def parenthetic_contents(self, string):
+    def bracket_contents(self, string):
         """Generate parenthesized contents in string as pairs (level, contents)."""
         stack = []
         for i, c in enumerate(string):
@@ -74,9 +74,21 @@ class VerboseGCParser:
                 start = stack.pop()
                 yield (len(stack), string[start + 1: i])
 
+    def bracket_inside(self, string):
+        bracket_count = 0
+        inside = ''
+        for c in string:
+            if c == '[':
+                bracket_count += 1
+            elif c== ']':
+                bracket_count -= 1
+            elif bracket_count == 0:
+                inside += c
+        return inside
 
 
     def parse_line(self, line):
+        COLLECT_REGEX = r'(\w*)K->(\w*)K\((\w*)K\)'
         #line: date_stamp: time_stamp:gc_info
         parsed_line = re.findall(r'(\S+):\s+(\S+):\s+(.*)', line)
         if not parsed_line:
@@ -84,7 +96,7 @@ class VerboseGCParser:
         date_stamp, time_stamp, gc_info = parsed_line[0]
         time_stamp = float(time_stamp)
         date_stamp = parse(date_stamp).strftime('%d-%b-%Y %H:%M:%S')
-        for level, content in self.parenthetic_contents(gc_info):
+        for level, content in self.bracket_contents(gc_info):
             if level == 0:
                 content_type = content.split('[')[0].strip()
                 gc_type = None
@@ -93,7 +105,8 @@ class VerboseGCParser:
                 elif content_type == 'Full GC':
                     gc_type = self.fullGC
                 if gc_type:
-                    heaps = re.findall('\]\s+(\w*)K->(\w*)K\((\w*)K\)', content)[0]
+                    inside_content = self.bracket_inside(content)
+                    heaps = re.findall(COLLECT_REGEX, inside_content)[0]
                     heap_before, heap_after, heap_size = map(lambda x: int(x), heaps)
                     for stats_gc_type in [gc_type, self.allGC]:
                         if stats_gc_type.last_ts is not None:
@@ -102,7 +115,7 @@ class VerboseGCParser:
                         else:
                             stats_gc_type.first_ts = time_stamp
                             stats_gc_type.first_date = date_stamp
-                        pause_time = float(re.findall(r'(\S*) secs', content)[0])
+                        pause_time = float(re.findall(r'(\S*) secs', inside_content)[0])
                         stats_gc_type.pause_times.append(pause_time)
 
                         stats_gc_type.last_ts = time_stamp
@@ -118,8 +131,9 @@ class VerboseGCParser:
                             stats_gc_type.pause_time_max_ds = date_stamp
             elif level == 1:
                 area_type, collection_info = content.split()
+                inside_content = self.bracket_inside(content)
                 if area_type == 'PSPermGen:':
-                    heaps = re.findall('(\w*)K->(\w*)K\((\w*)K\)', collection_info)[0]
+                    heaps = re.findall(COLLECT_REGEX, inside_content)[0]
                     heap_before, heap_after, heap_size = map(lambda x: int(x), heaps)
                     self.allGC.permgen_max_per = float(heap_after) / (heap_size) * 100
 
